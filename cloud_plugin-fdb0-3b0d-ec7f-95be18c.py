@@ -2442,7 +2442,7 @@ Data.recipes = {
     msg: "Your fire crackles to life." },
   burn_amber_logs: { name: "Burn amber logs", group: "burn", skill: "firemaking", lvl: 85, xp: 400, at: ["fire"],
     tools: [], in: [["amber_logs", 1]], out: [], ticks: 6, refuel: 100 },
-  craft_amber_charm: { group: "gold", skill: "crafting", lvl: 90, xp: 260, at: ["furnace"], tools: ["mould"],
+  craft_amber_charm: { group: "gold", skill: "crafting", lvl: 85, xp: 260, at: ["furnace"], tools: ["mould"],
     in: [["gold_bar", 1], ["amber_sap", 3]], out: [["amber_charm", 1]], ticks: 4, msg: "You cast an amber charm." },
   cook_raw_lanternfish: { group: "cook", skill: "cooking", lvl: 62, xp: 170, at: ["range", "fire"], tools: [],
     in: [["raw_lanternfish", 1]], out: [["lanternfish", 1]], ticks: 4, full: 92,

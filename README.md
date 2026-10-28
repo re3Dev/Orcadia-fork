@@ -73,6 +73,19 @@ equipment stats and gathering/equipment requirements are unchanged.
 Guides, production menus and level-up unlocks use the new recipe levels.
 Existing saves keep their XP and gain these unlocks without a reset.
 
+## Crafting unlocks and future endgame tiers
+
+All current Smithing and Crafting recipes unlock by **level 85**. The amber
+charm now requires **Crafting 85** instead of 90; its furnace, mould,
+one gold bar, three amber sap, and 260 XP reward are unchanged. The sunstone
+circlet also unlocks at 85, and all earlier crafting unlocks stay the same.
+
+Level 85 is the cap for existing recipe unlocks; **levels 86-99 are reserved
+for future god-tier Smithing and Crafting equipment**, not added yet.
+Higher levels still improve work rate and grant existing perks and proficiency
+bonuses. Quest, material, tool and equipment requirements still apply.
+Existing saves need no reset or XP changes.
+
 ## The Starless Forge: post-Hollow King expansion
 
 Start with **Astronomer Vesna in Saltmere (126,48)** after completing

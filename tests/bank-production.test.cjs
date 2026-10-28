@@ -54,6 +54,77 @@ test("the complete embedded JavaScript parses", () => {
   new vm.Script(source.split("<script>")[1].split("</script>")[0]);
 });
 
+test("existing smithing and crafting recipes all unlock by 85, leaving higher tiers for future equipment", () => {
+  const { Data } = loadEngine();
+  for (const skill of ["smithing", "crafting"]) {
+    const recipes = Object.entries(Data.recipes).filter(([, recipe]) => recipe.skill === skill);
+    assert.equal(Math.max(...recipes.map(([, recipe]) => recipe.lvl)), 85, skill);
+    for (const [rid, recipe] of recipes) {
+      for (const condition of recipe.if || []) {
+        if (["smithing", "crafting"].includes(condition.lvl)) {
+          assert.ok(condition.gte <= 85, rid);
+        }
+      }
+    }
+  }
+});
+
+test("amber charms unlock at Crafting 85 and retain inputs, XP and tool requirements in both production modes", () => {
+  for (const bankFeed of [false, true]) {
+    const f = fixture("craft_amber_charm", [{ id: "gold_bar", qty: 1 }, { id: "amber_sap", qty: 3 }]);
+    if (!bankFeed) {
+      f.Player.add(f.p, "gold_bar", 1);
+      f.Player.add(f.p, "amber_sap", 3);
+      f.p.bank = [];
+    }
+    f.Engine.setMakeBankFeed(f.state, bankFeed);
+    f.Player.add(f.p, "jewellery_mould", 1);
+    f.p.xp10.crafting = f.Rules.xpForLevel(84) * 10;
+    const before = JSON.stringify([f.p.inv, f.p.bank, f.p.xp10]);
+    assert.equal(f.Engine.make(f.state, f.rid, 1), false);
+    assert.equal(f.Engine.view.make(f.state).rows.find(row => row.rid === f.rid).lvl, 85);
+    assert.equal(JSON.stringify([f.p.inv, f.p.bank, f.p.xp10]), before);
+    f.p.xp10.crafting = f.Rules.xpForLevel(85) * 10;
+    const xp = f.p.xp10.crafting;
+    assert.equal(f.Engine.view.make(f.state).rows.find(row => row.rid === f.rid).ok, true);
+    assert.equal(f.Engine.make(f.state, f.rid, 1), true);
+    for (let i = 0; i < 8; i++) f.Engine.tick(f.state);
+    const count = id => bankFeed ? bankQty(f, id) : f.Player.count(f.p, id);
+    assert.equal(count("amber_charm"), 1);
+    assert.equal(count("gold_bar"), 0);
+    assert.equal(count("amber_sap"), 0);
+    assert.equal(f.Player.count(f.p, "jewellery_mould"), 1);
+    assert.equal(f.p.xp10.crafting - xp, 2600);
+    valid(f);
+  }
+  const noTool = fixture("craft_amber_charm", [{ id: "gold_bar", qty: 1 }, { id: "amber_sap", qty: 3 }]);
+  noTool.p.xp10.crafting = noTool.Rules.xpForLevel(85) * 10;
+  noTool.Engine.setMakeBankFeed(noTool.state, true);
+  assert.equal(noTool.Engine.make(noTool.state, noTool.rid, 1), false);
+});
+
+test("saved level-85 crafters gain the amber charm unlock in guides and production without an XP reset", () => {
+  const f = fixture("craft_amber_charm", [{ id: "gold_bar", qty: 1 }, { id: "amber_sap", qty: 3 }]);
+  f.p.xp10.crafting = f.Rules.xpForLevel(85) * 10;
+  f.Player.add(f.p, "jewellery_mould", 1);
+  const xp = f.p.xp10.crafting;
+  const saved = f.Engine.serialize(f.state);
+  assert.equal(saved.v, 1);
+  const restored = f.Engine.deserialize(saved);
+  assert.equal(restored.player.xp10.crafting, xp);
+  const row = f.Engine.view.guide(restored, "crafting").rows.find(row => row.icon === "amber_charm");
+  assert.equal(row.lvl, 85);
+  assert.equal(row.ok, true);
+  assert.ok(f.Engine.view.unlocks("crafting", 85).includes(row.name));
+  assert.equal(f.Engine.view.unlocks("crafting", 90).includes(row.name), false);
+  f.Script.openMake(restored, "furnace", f.Util.refObj(45, 45));
+  f.Engine.setMakeBankFeed(restored, true);
+  assert.equal(f.Engine.make(restored, f.rid, 1), true);
+  for (let i = 0; i < 8; i++) f.Engine.tick(restored);
+  assert.equal(f.Player.bankCount(restored.player, "amber_charm"), 1);
+  assert.deepEqual(Array.from(f.Engine.check(restored)), []);
+});
+
 test("station lists recipes whose materials exist only in the bank", () => {
   const f = fixture();
   assert.equal(f.Engine.view.make(f.state).bankFeed, false);
