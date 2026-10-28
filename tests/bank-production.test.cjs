@@ -1,15 +1,10 @@
 const assert = require("node:assert/strict");
-const { readFileSync } = require("node:fs");
-const path = require("node:path");
 const { test } = require("node:test");
 const vm = require("node:vm");
-
-const source = readFileSync(path.join(__dirname, "..", "cloud_plugin-fdb0-3b0d-ec7f-95be18c.py"), "utf8");
-const engine = source.split("/*ENGINE-START*/")[1].split("/*ENGINE-END*/")[0];
-const engineScript = new vm.Script(engine + "\n({ Engine, Data, Rules, Player, Sim, Script, Util });");
+const { source, loadEngine } = require("./engine-fixture.cjs");
 
 function fixture(rid = "smelt_steel", bank = [{ id: "iron_ore", qty: 100 }, { id: "coal", qty: 200 }]) {
-  const api = engineScript.runInNewContext();
+  const api = loadEngine();
   const { Engine, Sim, Util, Script } = api;
   const state = Engine.createState(12345);
   const p = state.player;
@@ -221,14 +216,14 @@ test("failed recipes bank their failure products without success XP", () => {
 test("bank-fed jobs do not reload or produce offline, but stored goods persist", () => {
   const f = fixture();
   run(f, -1, 8);
-  assert.equal(bankQty(f, "steel_bar"), 2);
+  assert.equal(bankQty(f, "steel_bar"), 3);
   assert.match(f.Engine.status(f.state).doing.text, /bank-fed/);
   const saved = f.Engine.serialize(f.state);
   assert.equal(saved.act, null);
   const restored = f.Engine.deserialize(saved);
   assert.equal(restored.player.act, null);
   f.Engine.catchUp(restored, 1000);
-  assert.equal(f.Player.bankCount(restored.player, "steel_bar"), 2);
+  assert.equal(f.Player.bankCount(restored.player, "steel_bar"), 3);
   assert.deepEqual(Array.from(f.Engine.check(restored)), []);
 });
 

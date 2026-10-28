@@ -3709,6 +3709,28 @@ const Rules = (function () {
     return Math.max(0, Math.min(1, 0.5 + 0.5 * (L - lvl) / (full - lvl)));
   }
 
+  var WORK_SKILLS = ["woodcutting", "mining", "fishing", "smithing", "cooking", "firemaking", "crafting"];
+  var WORK_MILESTONES = [
+    { lvl: 25, name: "Apprentice proficiency" },
+    { lvl: 50, name: "Journeyman proficiency" },
+    { lvl: 75, name: "Expert proficiency" },
+    { lvl: 99, name: "Master proficiency" }
+  ];
+
+  function workBonus(L) {
+    var lvl = Math.max(1, Math.min(99, Math.floor(Number(L)) || 1));
+    var ranks = WORK_MILESTONES.filter(function (m) { return lvl >= m.lvl; }).length;
+    return (lvl - 1) * 0.5 + ranks * 5;
+  }
+
+  function workRate(skill, L) {
+    return WORK_SKILLS.indexOf(skill) >= 0 ? 1 + workBonus(L) / 100 : 1;
+  }
+
+  function workTicks(skill, L, ticks) {
+    return ticks > 0 ? Math.max(1, ticks / workRate(skill, L)) : 0;
+  }
+
   // ----------------------------------------------------------------
   // --------------------------- Seasons ----------------------------
   // ----------------------------------------------------------------
@@ -3920,6 +3942,8 @@ const Rules = (function () {
     SKILLS: SKILLS, EQUIP_SLOTS: EQUIP_SLOTS, STYLES: STYLES, XP_TABLE: XP_TABLE,
     style: style, levelForXp: levelForXp, xpForLevel: xpForLevel, gatherChance: gatherChance,
     makeChance: makeChance, playerAttackRoll: playerAttackRoll, playerDefenceRoll: playerDefenceRoll,
+    WORK_SKILLS: WORK_SKILLS, WORK_MILESTONES: WORK_MILESTONES,
+    workBonus: workBonus, workRate: workRate, workTicks: workTicks,
     playerMaxHit: playerMaxHit, npcAttackRoll: npcAttackRoll, npcDefenceRoll: npcDefenceRoll,
     hitChance: hitChance, combatLevel: combatLevel, combatXp10: combatXp10, buyPrice: buyPrice,
     sellPrice: sellPrice, levelColor: levelColor,
@@ -7489,6 +7513,17 @@ const Sim = (function () {
 
   var SKILL_ANIM = { woodcutting: "chop", mining: "mine", fishing: "fish" };
 
+  function workTicks(state, skill, ticks) {
+    return Rules.workTicks(skill, Player.level(state.player, skill), ticks);
+  }
+
+  // Keep the fractional deadline so small level bonuses accumulate instead of rounding away.
+  function nextWork(state, a, skill, ticks) {
+    var duration = workTicks(state, skill, ticks);
+    var next = a.next + duration;
+    a.next = next > state.tick ? next : state.tick + duration;
+  }
+
   // The gather op of an act: the base object's op with that id.
   function gatherOp(a) {
     var d = Util.has(Data.objects, a.base) ? Data.objects[a.base] : null;
@@ -7554,7 +7589,7 @@ const Sim = (function () {
     var why = gatherCheck(state, op);
     if (why && !why.full) return failGather(state, null, op, why);
     var a = { k: "gather", ref: t.ref, op: op.id, base: t.o.id, group: t.o.group || null, ax: t.x, ay: t.y,
-      next: state.tick + op.ticks, wait: false, sub: null, subAt: 0 };
+      next: state.tick + workTicks(state, op.skill, op.ticks), wait: false, sub: null, subAt: 0 };
     setAct(state, a);
     if (why) onFull(state, a, op);
     if (p.act !== a) return;
@@ -7597,7 +7632,7 @@ const Sim = (function () {
   // Depleted node: retarget (afk.cont) or stop silently.
   function retarget(state, a, op) {
     if (!state.player.afk.cont) setAct(state, null);
-    else if (!research(state, a, op.ticks, true)) stop(state, "no " + lower(Data.objects[a.base].name) + " nearby");
+    else if (!research(state, a, workTicks(state, op.skill, op.ticks), true)) stop(state, "no " + lower(Data.objects[a.base].name) + " nearby");
   }
 
   // Fishing follows the nearest active spot of its group when its own spot moves.
@@ -7613,7 +7648,7 @@ const Sim = (function () {
       stop(state, "no " + lower(Data.objects[a.base].name) + " nearby");
       return false;
     }
-    setNode(state, a, cands[r.i], r.path, false, op.ticks);
+    setNode(state, a, cands[r.i], r.path, false, workTicks(state, op.skill, op.ticks));
     return true;
   }
 
@@ -7626,9 +7661,9 @@ const Sim = (function () {
     var up = !!o && o.id === a.base;
     if (a.wait && up) {
       a.wait = false;
-      a.next = Math.max(a.next, state.tick + op.ticks);
+      a.next = Math.max(a.next, state.tick + workTicks(state, op.skill, op.ticks));
     } else if (a.wait) {
-      if (state.tick % 10 === 0) research(state, a, op.ticks, false);
+      if (state.tick % 10 === 0) research(state, a, workTicks(state, op.skill, op.ticks), false);
       idleAnim(p);
       return false;
     } else if (!up) {
@@ -7705,7 +7740,7 @@ const Sim = (function () {
     if (gone && p.act === a) retarget(state, a, op);
   }
 
-  // One roll per op.ticks: allowed yields, highest level first; the first success wins. The season's
+  // One roll per level-adjusted cycle: allowed yields, highest level first; the first success wins. The season's
   // gather mod and Quick swing multiply the tool's (gatherChance still caps at 1); Big one raises the
   // better catch where two are allowed.
   function roll(state, a, op, r) {
@@ -7716,7 +7751,7 @@ const Sim = (function () {
       (1 + Player.perkVal(p, op.skill, "gather"));
     var ys = eligible(p, op);
     var big = ys.length > 1 ? 1 + Player.perkVal(p, op.skill, "better") : 1;
-    a.next = a.next + op.ticks > state.tick ? a.next + op.ticks : state.tick + op.ticks;
+    nextWork(state, a, op.skill, op.ticks);
     for (var i = 0; i < ys.length; i++) {
       var m = i === 0 ? mult * big : mult;
       if (Util.rand(state) < Rules.gatherChance(L, ys[i].low, ys[i].high, m)) return gain(state, a, op, ys[i], r);
@@ -7735,11 +7770,11 @@ const Sim = (function () {
     }
     if (!locate(state, a, op)) return;
     var r = Util.parseRef(a.ref);
-    if (approach(state, a, r.x, r.y, objFrom(a.base), op.ticks)) return;
+    if (approach(state, a, r.x, r.y, objFrom(a.base), workTicks(state, op.skill, op.ticks))) return;
     p.face = Util.dirIndex(r.x - p.x, r.y - p.y);
     if (a.sub) return;
     p.anim = SKILL_ANIM[op.skill] || null;
-    if (state.tick < a.next) return;
+    if (state.tick + 1e-7 < a.next) return;
     var why = gatherCheck(state, op);
     if (why) failGather(state, a, op, why);
     else roll(state, a, op, r);
@@ -7961,7 +7996,7 @@ const Sim = (function () {
     if (!n || !f || f.t !== "make" || !Array.isArray(f.rids) || f.rids.indexOf(rid) < 0 || !Util.has(Data.recipes, rid)) return false;
     var r = Data.recipes[rid];
     var t = typeof f.at === "string" ? Util.parseRef(f.at) : null;
-    var a = { k: "make", rid: rid, left: n, next: state.tick + Util.int(r.ticks, 0, 100000, 0), at: t ? f.at : null,
+    var a = { k: "make", rid: rid, left: n, next: state.tick + workTicks(state, r.skill, Util.int(r.ticks, 0, 100000, 0)), at: t ? f.at : null,
       ax: t ? t.x : p.x, ay: t ? t.y : p.y, bankFeed: f.bankFeed === true };
     var why = makeCheck(state, a, r);
     if (why && why.why === "the fire went out") {
@@ -8088,13 +8123,13 @@ const Sim = (function () {
     if (a.at) {
       var st = stationAt(state, a.at, r);
       if (!st) return stop(state, "the fire went out");
-      if (approach(state, a, st.x, st.y, st.o.def.from, r.ticks)) return;
+      if (approach(state, a, st.x, st.y, st.o.def.from, workTicks(state, r.skill, r.ticks))) return;
       p.face = Util.dirIndex(st.x - p.x, st.y - p.y);
     }
     p.anim = makeAnim(r);
-    if (state.tick < a.next) return;
+    if (state.tick + 1e-7 < a.next) return;
     for (var guard = 0; guard < 1000 && makeOne(state, a, r) && r.ticks <= 0; guard++) { /* instant: the whole count */ }
-    if (p.act === a) a.next = state.tick + Math.max(1, r.ticks);
+    if (p.act === a) nextWork(state, a, r.skill, Math.max(1, r.ticks));
   }
 
   // Arrival handlers by op kind, run on the arrival tick (section 10.2). t = resolve() target, f = findOp(),
@@ -9946,13 +9981,29 @@ const Engine = (function () {
     return { lvl: lvl, xp: xp, next: hi, pct: Math.max(0, Math.min(100, Math.floor((xp - lo) * 100 / (hi - lo)))) };
   }
 
+  function levelBenefit(skill, lvl) {
+    if (Rules.WORK_SKILLS.indexOf(skill) >= 0) return "Work rate +" + Rules.workBonus(lvl) + "%";
+    if (skill === "attack") return "Higher accuracy on every level; maximum hit is unchanged.";
+    if (skill === "strength") return "Higher damage potential; maximum hits are rounded to whole numbers.";
+    if (skill === "defence") return "Higher melee avoidance on every level; landed-hit damage is unchanged.";
+    return "Maximum health: " + lvl;
+  }
+
+  function benefitDetail(skill) {
+    if (Rules.WORK_SKILLS.indexOf(skill) < 0) return "Combat formulas and equipment requirements are unchanged.";
+    return "Each level above 1 adds +0.5% work rate. Proficiency at 25, 50, 75 and 99 adds another +5% each, " +
+      "for +69% at 99. Bonuses add together. Small time savings accumulate across cycles; at most one timed action " +
+      "finishes per tick. Walking, resource respawns, materials and XP per item are unchanged.";
+  }
+
   function viewSkills(s) {
     var p = s.player;
     var totalXp = 0;
     var list = skillList().map(function (k) {
       var g = progress(p, k.id);
       totalXp += g.xp;
-      return { id: k.id, name: k.name, lvl: g.lvl, xp: g.xp, next: g.next, pct: g.pct };
+      return { id: k.id, name: k.name, lvl: g.lvl, xp: g.xp, next: g.next, pct: g.pct,
+        benefit: levelBenefit(k.id, g.lvl) };
     });
     return { list: list, total: Player.totalLevel(p), totalXp: Math.round(totalXp * 10) / 10, cmb: Player.combatLevel(p) };
   }
@@ -9997,12 +10048,17 @@ const Engine = (function () {
     });
   }
 
-  // Guide rows sorted by level then name; strength and hitpoints have none.
+  // Guide rows sorted by level then name.
   function guideRows(skill) {
     var out = [];
     gatherRows(skill, out);
     recipeRows(skill, out);
     itemRows(skill, out);
+    if (Rules.WORK_SKILLS.indexOf(skill) >= 0) {
+      Rules.WORK_MILESTONES.forEach(function (m) {
+        out.push({ lvl: m.lvl, icon: null, name: m.name, note: "Permanent +5% work rate in this skill (automatic)" });
+      });
+    }
     return out.sort(function (a, b) { return a.lvl - b.lvl || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0); });
   }
 
@@ -10012,13 +10068,16 @@ const Engine = (function () {
     var rows = guideRows(skill).map(function (r) {
       return { lvl: r.lvl, icon: r.icon, name: r.name, note: r.note, ok: g.lvl >= r.lvl };
     });
-    return { id: skill, lvl: g.lvl, xp: g.xp, next: g.next, pct: g.pct, rows: rows };
+    return { id: skill, lvl: g.lvl, xp: g.xp, next: g.next, pct: g.pct, rows: rows,
+      benefit: levelBenefit(skill, g.lvl), detail: benefitDetail(skill),
+      nextBenefit: g.lvl < 99 ? "Level " + (g.lvl + 1) + ": " + levelBenefit(skill, g.lvl + 1) : null };
   }
 
   function unlocks(skill, lvl) {
     if (Rules.SKILLS.indexOf(skill) < 0) return [];
     var out = [];
     guideRows(skill).forEach(function (r) { if (r.lvl === lvl && out.indexOf(r.name) < 0) out.push(r.name); });
+    if (lvl >= 2 && lvl <= 99 && Rules.WORK_SKILLS.indexOf(skill) >= 0) out.push(levelBenefit(skill, lvl));
     return out;
   }
 
@@ -10030,6 +10089,10 @@ const Engine = (function () {
     if (g.next === null) return null;
     var rows = guideRows(skill);
     var perks = Player.perkList(skill).length > 0;
+    if (Rules.WORK_SKILLS.indexOf(skill) >= 0) {
+      var next = g.lvl + 1;
+      return goalAt(skill, g, next, unlocks(skill, next), perks && next % Rules.PERK_EVERY === 0);
+    }
     for (var L = g.lvl + 1; L < 99; L++) {
       var names = [];
       for (var i = 0; i < rows.length; i++) if (rows[i].lvl === L && names.indexOf(rows[i].name) < 0) names.push(rows[i].name);
@@ -10079,6 +10142,7 @@ const Engine = (function () {
       if (!title) title = skillName(r.skill);
       return { rid: rid, out: src.length ? src[0][0] : null, name: Sim.recipeName(r), skill: r.skill, lvl: r.lvl,
         ok: why === null, why: why,
+        seconds: Rules.workTicks(r.skill, Player.level(p, r.skill), r.ticks) * Rules.TICK_MS / 1000,
         inputs: (r.in || []).map(function (e) { return [e[0], e[1], Sim.makeCount(p, e[0], f.bankFeed)]; }) };
     });
     return { title: title, rows: rows, bankFeed: f.bankFeed === true,
@@ -15262,7 +15326,8 @@ const UI = (function () {
       var hp = k.id === "hitpoints";
       var pts = free[k.id] > 0 ? free[k.id] : 0;
       var tip = k.name + ": XP " + Util.fmtInt(k.xp) + (k.next === null ? "" : " · Next level " + Util.fmtInt(k.next) +
-        " · Remaining " + Util.fmtInt(Math.ceil(k.next - k.xp))) + (pts ? " · " + pointsText(pts) + " to spend" : "");
+        " · Remaining " + Util.fmtInt(Math.ceil(k.next - k.xp))) + " · " + k.benefit +
+        (pts ? " · " + pointsText(pts) + " to spend" : "");
       text(el.querySelector("span"), hp ? s.player.hp + "/" + k.lvl : String(k.lvl));
       toggle(el, "lo", hp && s.player.hp < k.lvl);
       toggle(el, "pts", pts > 0);
@@ -15715,29 +15780,22 @@ const UI = (function () {
     return g.next === null ? Util.fmtInt(g.xp) + " XP" : g.pct + "% to " + (g.lvl + 1) + " · " + Util.fmtInt(Math.ceil(g.next - g.xp)) + " XP left";
   }
 
-  // The perks block sits on top. Opens at the top while the skill has a point to spend, else scrolled to the
-  // first locked row; a level-up rebuild keeps the reader's scroll.
+  // Opens at the top to show current benefits; a level-up rebuild keeps the reader's scroll.
   function buildGuide(s) {
-    var fresh = winFresh;
     var g = Engine.view.guide(s, uiWin.skill);
     if (!g) { uiWin = null; return; }
     var name = skillName(g.id);
     var sub = guideSub(g);
     var pv = perksOn() ? Engine.view.perks(s, g.id) : null;
-    var first = -1;
-    var rows = g.rows.map(function (r, i) {
-      if (!r.ok && first < 0) first = i;
+    var rows = g.rows.map(function (r) {
       return '<div class="gr' + (r.ok ? "" : " lock") + '"><span class="lv">' + r.lvl + "</span>" + (r.icon ? ico(r.icon, 1) : '<i class="ico"></i>') +
         "<div><span>" + esc(r.name) + '</span><span class="nt">' + esc(r.note) + "</span></div></div>";
     }).join("");
-    var list = rows || '<p class="mt">Every level of ' + esc(name) + " makes you tougher in a fight.</p>";
-    frame(name + " " + g.lvl, esc(sub), pv && pv.perks && pv.perks.length ? perksHtml(pv) + '<div class="sec">Unlocks</div>' + list : list, "");
+    var benefits = '<div class="sec">Level benefits</div><p class="ln2"><b>' + esc(g.benefit) + "</b></p>" +
+      '<p class="ln2">' + esc(g.detail) + "</p>" + (g.nextBenefit ? '<p class="ln2">' + esc(g.nextBenefit) + "</p>" : "");
+    var perks = pv && pv.perks && pv.perks.length ? perksHtml(pv) : "";
+    frame(name + " " + g.lvl, esc(sub), benefits + perks + (rows ? '<div class="sec">Unlocks</div>' + rows : ""), "");
     syncPerks(s);
-    if (first > 0 && fresh && !(pv && pv.free > 0)) {
-      var wb = $("win").querySelector(".wb");
-      var row = wb.querySelectorAll(".gr")[first];
-      wb.scrollTop = Math.max(0, row.getBoundingClientRect().top - wb.getBoundingClientRect().top - 40);
-    }
   }
 
   // ----------------------------------------------------------------
@@ -15965,7 +16023,7 @@ const UI = (function () {
   }
 
   function makeHover(s, r) {
-    if (r.ok) return "Make " + r.name;
+    if (r.ok) return "Make " + r.name + " · Average cycle " + r.seconds.toFixed(2) + " s";
     if (levelLocked(s, r)) return "Needs " + skillName(r.skill) + " level " + r.lvl;
     for (var i = 0; i < r.inputs.length; i++) {
       var e = r.inputs[i];
