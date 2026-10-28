@@ -124,6 +124,40 @@ base max hit 6 and Keen (+25% accuracy), growing into an Astral wisp and
 then a Void lantern. The quest core is guaranteed while needed, including
 if lost before turn-in; already owning a core prevents another drop.
 
+## Pet training to level 99
+
+All combat pets can now reach **level 99**. Existing ownership, summons,
+discovery records, XP, and levels are preserved. A previously capped level-20
+pet remains level 20 and can immediately start gaining XP again.
+
+- **Levels 1-20 are unchanged**, including damage, accuracy, growth forms,
+  attack speed and perks.
+- Above 20, each level adds **+3 attack**.
+- Every seven levels above 20 adds **+1 max hit**: 27, 34, 41, and so on.
+- Training milestones at **25, 50, 75 and 99** each add another **+1 base
+  max hit**. Scorch applies after these bonuses.
+- Pets still earn **1 XP per damage they actually deal**, using the same
+  cumulative threshold, `25 * (level - 1)^2`. Level 99 requires **240,100 XP**.
+
+| Pet | Attack at 20 | Max hit at 20 | Attack at 99 | Max hit at 99 |
+|---|---:|---:|---:|---:|
+| Ash pup and its grown forms | 58 | 4 | 295 | 19 |
+| Ember whelp and its grown forms (Scorch) | 58 | 5 | 295 | 23 |
+| Star mote and its grown forms (Keen) | 98 | 9 | 335 | 24 |
+
+Open a pet's **Pet dex** to see its level out of 99, the next level's stats,
+and milestone targets. Young, Adult and Mythic forms still unlock at levels
+1, 7 and 14; later levels improve combat stats without replacing those forms.
+Perks, summon rules and combat/offline safety rules are unchanged.
+
+The goal is a **strong companion**, not a replacement for the player.
+Balance tests check every pet against endgame opponents: at 99 they deal more
+than triple their level-20 expected DPS against Astravor, while remaining
+below 85% of a fully equipped level-99 Eventide user's sustained DPS.
+These comparisons exclude player perks, eating and movement. High-level pets
+can outperform less-developed characters; actual results depend on the foe
+and equipment.
+
 ## Bank-fed production
 
 Put ingredients in your bank, carry required tools, open a production station,
@@ -144,7 +178,7 @@ closing. Existing inventory jobs retain their normal offline behavior.
 No npm dependencies are required. With Node.js installed, run:
 
 ```powershell
-node --test .\tests\bank-production.test.cjs .\tests\skill-progression.test.cjs .\tests\starless-forge.test.cjs
+node --test .\tests\bank-production.test.cjs .\tests\skill-progression.test.cjs .\tests\starless-forge.test.cjs .\tests\pet-progression.test.cjs
 ```
 
 Tests execute the actual embedded engine and cover progression thresholds,
@@ -152,7 +186,10 @@ sustained output, gathering, production, UI view data, save compatibility and
 bank-production regressions. Expansion tests cover quest turn-ins and recovery,
 map connectivity and locks, boss telegraphs/dodging/wards/reset/respawn, a first
 kill using existing gear, drops, crafting, equipment requirements and legacy saves.
-The full embedded JavaScript is also syntax-checked.
+Pet tests cover all level boundaries, unchanged levels 1-20, milestone bonuses,
+actual damage and XP, the cap, records and save compatibility, Pet dex view data,
+and sustained damage/balance for every pet. The full embedded JavaScript is also
+syntax-checked.
 
 ## Trying the plugin
 

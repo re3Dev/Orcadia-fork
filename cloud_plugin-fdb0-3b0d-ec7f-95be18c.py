@@ -4021,13 +4021,13 @@ const Rules = (function () {
   // ----------------------------- Pets -----------------------------
   // ----------------------------------------------------------------
 
-  // Section 10.16. A pet swings every PET_SPEED ticks (Quick: PET_QUICK) with its own stats, never the
-  // player's: at pet level L its attack is att + 2 x (L - 1) and its max hit maxHit + floor((L - 1) / 5).
-  // Level L needs 25 x (L - 1)^2 pet XP (one per damage).
+  // Levels 1-20 retain their original stats. Mature training adds accuracy every level, damage
+  // every seven levels above 20, and damage milestones. XP remains 25 x (L - 1)^2, one per damage.
   var PET_SPEED = 6;
   var PET_QUICK = 4;
-  var PET_MAX_LVL = 20;
+  var PET_MAX_LVL = 99;
   var PET_XP_MAX = 25 * (PET_MAX_LVL - 1) * (PET_MAX_LVL - 1);
+  var PET_MILESTONES = [25, 50, 75, 99];
   // The eight combat perks a pet may carry; none touches skilling.
   var PET_PERKS = {
     quick: { name: "Quick", desc: "Strikes every 4 ticks instead of 6." },
@@ -4063,12 +4063,18 @@ const Rules = (function () {
   }
 
   // The pet's attack level, and its attack roll as if it had a +64 attack bonus.
-  function petAttack(att, L) { return Math.max(1, att | 0) + 2 * (petLvl(L) - 1); }
+  function petAttack(att, L) {
+    var l = petLvl(L);
+    return Math.max(1, att | 0) + 2 * (Math.min(l, 20) - 1) + 3 * Math.max(0, l - 20);
+  }
   function petAttackRoll(att, L) { return (petAttack(att, L) + 8) * 128; }
 
   // The pet's max hit, at least 1; Scorch adds a quarter (at least +1).
   function petMaxHit(maxHit, L, perk) {
-    var m = Math.max(1, (maxHit | 0) + Math.floor((petLvl(L) - 1) / 5));
+    var l = petLvl(L);
+    var bonus = PET_MILESTONES.filter(function (n) { return l >= n; }).length;
+    var m = Math.max(1, (maxHit | 0) + Math.floor((Math.min(l, 20) - 1) / 5) +
+      Math.floor(Math.max(0, l - 20) / 7) + bonus);
     return perk === "scorch" ? m + Math.max(1, Math.floor(m / 4)) : m;
   }
 
@@ -4193,7 +4199,8 @@ const Rules = (function () {
     SEASON_TICKS: SEASON_TICKS, seasonIndex: seasonIndex, seasonLeft: seasonLeft,
     PERK_EVERY: PERK_EVERY, PERK_RESET_COINS: 25, perkPoints: perkPoints,
     PET_SPEED: PET_SPEED, PET_QUICK: PET_QUICK, PET_MAX_LVL: PET_MAX_LVL, PET_XP_MAX: PET_XP_MAX, PET_PERKS: PET_PERKS,
-    PET_STAGES: PET_STAGES, petStage: petStage, petXpFor: petXpFor, petLevel: petLevel, petAttack: petAttack, petAttackRoll: petAttackRoll, petMaxHit: petMaxHit,
+    PET_STAGES: PET_STAGES, PET_MILESTONES: PET_MILESTONES,
+    petStage: petStage, petXpFor: petXpFor, petLevel: petLevel, petAttack: petAttack, petAttackRoll: petAttackRoll, petMaxHit: petMaxHit,
     MAX_XP10: 2000000000,
     SKILLS: SKILLS, EQUIP_SLOTS: EQUIP_SLOTS, STYLES: STYLES, XP_TABLE: XP_TABLE,
     style: style, levelForXp: levelForXp, xpForLevel: xpForLevel, gatherChance: gatherChance,
@@ -6882,7 +6889,8 @@ const Combat = (function () {
       Util.emit(state, { type: "petGrow", id: p.pet, stage: Rules.petStage(after) });
       Util.emit(state, { type: "save" });
     }
-    Util.msg(state, "Your " + String(now).toLowerCase() + " is now level " + after + ".", "game");
+    Util.msg(state, "Your " + String(now).toLowerCase() + " is now level " + after + ". Attack " +
+      Rules.petAttack(d.att, after) + ", max hit " + Rules.petMaxHit(d.maxHit, after, d.perk) + ".", "game");
   }
 
   // One strike with the pet's own stats (never the player's): its attack roll against the foe's defence
@@ -10498,7 +10506,8 @@ const Engine = (function () {
         next: lvl < Rules.PET_MAX_LVL ? Rules.petXpFor(lvl + 1) : null, perk: d.perk, perkName: pk.name, perkDesc: pk.desc,
         on: p.pet === id };
     });
-    return { active: Combat.summoned(p) ? p.pet : null, owned: list.filter(function (e) { return e.owned; }).length,
+    return { maxLevel: Rules.PET_MAX_LVL,
+      active: Combat.summoned(p) ? p.pet : null, owned: list.filter(function (e) { return e.owned; }).length,
       list: list };
   }
 
@@ -10517,6 +10526,12 @@ const Engine = (function () {
     });
     row.att = Rules.petAttack(d.att, lvl);
     row.maxHit = Rules.petMaxHit(d.maxHit, lvl, d.perk);
+    row.maxLevel = Rules.PET_MAX_LVL;
+    row.nextBenefit = lvl < Rules.PET_MAX_LVL ? "Level " + (lvl + 1) + ": Attack " +
+      Rules.petAttack(d.att, lvl + 1) + ", max hit " + Rules.petMaxHit(d.maxHit, lvl + 1, d.perk) + "." : null;
+    row.milestones = Rules.PET_MILESTONES.map(function (l) {
+      return { lvl: l, reached: lvl >= l, att: Rules.petAttack(d.att, l), maxHit: Rules.petMaxHit(d.maxHit, l, d.perk) };
+    });
     row.speed = d.perk === "quick" ? Rules.PET_QUICK : Rules.PET_SPEED;
     row.prev = Rules.petXpFor(lvl);
     row.rec = { dmg: log.dmg, kills: log.kills, best: log.best, kc: log.kc, out: log.out };
@@ -15522,7 +15537,7 @@ const UI = (function () {
             "</span></div></div>";
         }
         return '<div class="pet' + (e.on ? " on" : "") + '" data-act="petinfo" data-v="' + esc(e.id) + '"><canvas data-pet="' +
-          esc(e.id) + '" data-stage="' + e.stage + '"></canvas><div><b>' + esc(e.name) + "</b><span>Lv " + e.lvl + " " +
+          esc(e.id) + '" data-stage="' + e.stage + '"></canvas><div><b>' + esc(e.name) + "</b><span>Lv " + e.lvl + "/" + v.maxLevel + " " +
           esc(e.stageName) + " · " + esc(e.perkName) +
           '</span><i class="pet-bar"><i></i></i></div><button data-act="pet" data-v="' + esc(e.id) + '">' +
           (e.on ? "Dismiss" : "Summon") + "</button></div>";
@@ -15860,11 +15875,17 @@ const UI = (function () {
     var r = v.rec, x = v.dex;
     var body = '<div class="pd"><div class="pd-top"><canvas class="pd-pic"></canvas><div class="pd-id"><b>' + esc(v.name) +
       "</b><span>" + esc(x.kind) + " · " + esc(v.stageName) + '</span><div class="pd-forms">' + forms + "</div></div></div>" +
-      '<div class="pd-xp"><b>Level ' + v.lvl + '</b><i class="pd-bar"><i style="width:' + pct + '%"></i></i><span>' +
+      '<div class="pd-xp"><b>Level ' + v.lvl + " / " + v.maxLevel + '</b><i class="pd-bar"><i style="width:' + pct + '%"></i></i><span>' +
       (v.next === null ? "Max level" : Util.fmtInt(v.xp) + " / " + Util.fmtInt(v.next) + " XP") + "</span></div>" +
       '<h4>Stats</h4><dl class="pd-dl">' + row("Attack", String(v.att)) + row("Max hit", String(v.maxHit)) +
       row("Attacks", "every " + (v.speed * Rules.TICK_MS / 1000).toFixed(1) + " s") + row("Perk", v.perkName) + "</dl>" +
       '<p class="pd-note">' + esc(v.perkDesc) + " Fights only; it never helps with skilling.</p>" +
+      '<h4>Training</h4><p class="pd-note">Earn 1 XP per damage dealt. After level 20: +3 attack each level, ' +
+      '+1 max hit every 7 levels, and +1 base max hit at each milestone (before Scorch).</p>' +
+      '<p class="pd-note">' + esc(v.nextBenefit || "Maximum pet level reached.") + '</p><dl class="pd-dl">' +
+      v.milestones.map(function (m) {
+        return row("Level " + m.lvl, "Attack " + m.att + " · max hit " + m.maxHit + (m.reached ? " · Reached" : ""));
+      }).join("") + "</dl>" +
       '<h4>Records</h4><dl class="pd-dl">' + row("Damage dealt", Util.fmtInt(r.dmg)) + row("Foes defeated", Util.fmtInt(r.kills)) +
       row("Biggest hit", String(r.best)) + row("Time together", Util.fmtDur(r.out)) +
       row("Found", r.kc > 0 ? v.from + " kill #" + Util.fmtInt(r.kc) : "Before records began") + "</dl>" +
@@ -15874,7 +15895,7 @@ const UI = (function () {
       }).join("") + "</ol></div>";
     var foot = '<button class="gb" data-act="pet" data-v="' + esc(v.id) + '">' + (v.on ? "Dismiss" : "Summon") + "</button>" +
       '<span class="sp"></span><span class="lb">' + esc(v.examine) + "</span>";
-    frame("Pet dex", esc("Lv " + v.lvl + " · " + v.stageName), body, foot, true);
+    frame("Pet dex", esc("Lv " + v.lvl + "/" + v.maxLevel + " · " + v.stageName), body, foot, true);
     var cv = $("win").querySelector(".pd-pic"), sp = Sprites.pet(v.id, 2, 0, v.stage);
     var d = Math.max(1, Math.ceil(window.devicePixelRatio || 1));
     var k = Math.max(1, Math.min(Math.floor(92 / sp.w), Math.floor(76 / sp.h)));
