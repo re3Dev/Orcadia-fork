@@ -3626,6 +3626,262 @@ Data.maps.deeps = {
   ],
   fish: []
 };
+// ==== src/engine/data/starless_forge.js ====
+// Expansion maps are appended so original NPC spawn ids and saved respawn timers stay stable.
+// The original quest cape remains earned by the original quests, not future expansion quests.
+Data.items.heros_mantle.equip.if = Object.keys(Data.quests).map(function (qid) { return { q: qid, eq: 100 }; });
+Data.items.heros_mantle.equip.ifMsg = "Finish every original quest to wear this.";
+
+Object.assign(Data.items, {
+  stardust: { name: "Stardust", examine: "Cold sparks shed by the Starless Forge.", value: 500, cat: "misc", stack: true,
+    icon: ["gem_uncut", "#a58ce8", "#e0d4ff"] },
+  astral_alloy: { name: "Astral alloy", examine: "Starsteel bound around a thread of night.", value: 3000, cat: "bar",
+    icon: ["bar", "#8474b8", "#e0d4ff"] },
+  starless_core: { name: "Starless core", examine: "A silent heart from the forge's guardian.", value: 0, cat: "quest",
+    untradeable: true, icon: ["heart", "#544078", "#d0b8ff"] },
+  starward: { name: "Starward", examine: "An astral shield. Halves Astravor's marked blast damage when equipped.",
+    value: 0, cat: "armour", untradeable: true, icon: ["shield", "#8474b8", "#e0d4ff"],
+    equip: { slot: "shield", att: 0, str: 0, def: 55, req: { defence: 60 } } },
+  nightfall: { name: "Nightfall", examine: "A one-handed blade with an edge like a closing sky.", value: 110000, cat: "weapon",
+    icon: ["sword", "#b8a0f0", "#403050"],
+    equip: { slot: "weapon", att: 70, str: 74, def: 0, speed: 4, req: { attack: 70 } } },
+  eventide: { name: "Eventide", examine: "A two-handed sword heavy with the last light of a star.", value: 150000, cat: "weapon",
+    icon: ["greatsword", "#d0b8ff", "#403050"],
+    equip: { slot: "weapon", att: 76, str: 250, def: 0, speed: 7, twoHanded: true, req: { attack: 70 } } },
+  astral_helm: { name: "Astral helm", examine: "A crown of quenched starlight.", value: 42000, cat: "armour",
+    icon: ["helm", "#a898d0"], equip: { slot: "head", att: 0, str: 0, def: 46, req: { defence: 70 } } },
+  astral_cuirass: { name: "Astral cuirass", examine: "The forge's night, hammered into plate.", value: 100000, cat: "armour",
+    icon: ["breastplate", "#a898d0"], equip: { slot: "body", att: 0, str: 0, def: 140, req: { defence: 70 } } },
+  astral_greaves: { name: "Astral greaves", examine: "Violet steel guards your stride.", value: 65000, cat: "armour",
+    icon: ["greaves", "#a898d0"], equip: { slot: "legs", att: 0, str: 0, def: 90, req: { defence: 70 } } },
+  astral_gauntlets: { name: "Astral gauntlets", examine: "A firm grip on a little piece of night.", value: 30000, cat: "armour",
+    icon: ["gloves", "#a898d0"], equip: { slot: "hands", att: 6, str: 6, def: 14, req: { defence: 70 } } },
+  astral_boots: { name: "Astral boots", examine: "Cold light follows each footfall.", value: 30000, cat: "armour",
+    icon: ["boots", "#a898d0"], equip: { slot: "feet", att: 0, str: 0, def: 20, req: { defence: 70 } } },
+  starbound_signet: { name: "Starbound signet", examine: "Vesna's seal, set with a fragment of the Starless core.",
+    value: 0, cat: "jewellery", untradeable: true, icon: ["ring", "#a898d0", "#e0d4ff"],
+    equip: { slot: "ring", att: 8, str: 8, def: 12, req: { defence: 70 } } }
+});
+
+Object.assign(Data.objects, {
+  starforge_entrance: { name: "Starless stair", examine: "A stair under Duskhollow, sealed with old starsteel.",
+    draw: ["ladder_down"], mapIcon: "ladder",
+    ops: [{ id: "enter", label: "Descend", kind: "climb", if: [{ q: "beyond_crown", eq: 100 }],
+      fail: "Ask Astronomer Vesna in Saltmere about the silence beneath the Hollow King's throne." }] },
+  starforge_seal: { name: "Astral seal", examine: "Beyond it, Astravor guards the Starless Forge.",
+    draw: ["door"], from: "ns",
+    ops: [{ id: "enter", label: "Enter", kind: "script", if: [{ q: "starless_forge", gte: 20 }],
+      fail: "Vesna needs six starbound sentinels defeated before you face the guardian.",
+      do: [{ dialogue: "starforge_warning" }] }] }
+});
+
+Object.assign(Data.npcs, {
+  starbound_sentinel: { name: "Starbound sentinel", examine: "Armour filled with the night between stars.",
+    draw: ["guard", "#544078", "#a898d0", "#e0d4ff", "plume"], ops: [],
+    combat: { lvl: 98, hp: 130, att: 78, str: 80, def: 75, attB: 45, defB: 65, maxHit: 18, speed: 5, aggro: 4,
+      respawn: 90, drops: "starbound_sentinel" } },
+  astravor: { name: "Astravor the Starless", examine: "The last guardian of a forge that fed on fallen stars.",
+    scale: 2, wander: 0, draw: ["golem", "#544078", "#e0d4ff"], ops: [],
+    combat: { lvl: 120, hp: 620, att: 105, str: 100, def: 85, attB: 50, defB: 70, maxHit: 22, speed: 5, aggro: 6,
+      always: true, respawn: 250, drops: "astravor", boss: true,
+      special: { k: "breath", every: 12, warn: 3, min: 20, max: 34, ward: "starward", arena: "starforge_heart", reset: 10,
+        enterMsg: "Astravor wakes. The forge drinks the light around you.",
+        enrage: { hp: 180, every: 8, speed: 4, msg: "Astravor fractures! Starlight spills from its broken armour." } } } }
+});
+
+Data.pets.star_mote = {
+  name: "Star mote", examine: "A tiny star that has decided to orbit you.", draw: ["imp", "#8474b8", "#e0d4ff"],
+  grows: [{ name: "Astral wisp", draw: ["imp", "#a898d0", "#eee4ff"] },
+    { name: "Void lantern", draw: ["imp", "#c8b8f0", "#ffffff"] }],
+  from: "astravor", rate: 200, att: 60, maxHit: 6, perk: "keen",
+  dex: { kind: "Astral spirit", habitat: "The Starless Forge", likes: "Polished metal and the night sky",
+    size: ["4 in", "1 ft", "3 ft"], weight: ["None", "None", "None"],
+    facts: ["It hides behind your shoulder when the sun comes up.",
+      "An astral wisp makes tiny constellations out of the sparks above an anvil.",
+      "A void lantern remembers the sky before the star that made it fell."] }
+};
+
+Object.assign(Data.drops, {
+  starbound_sentinel: {
+    always: [["coins", 200, 600], ["stardust", 1, 2]],
+    main: [[32, "starsteel_bar", 1, 1], [24, "starmetal_ore", 2, 3], [24, "stormray", 1, 1],
+      [8, "uncut_sunstone", 1, 1], [4, "astral_helm", 1, 1], [36, null, 0, 0]], gem: 16 },
+  astravor: {
+    always: [["coins", 4000, 8000], ["stardust", 2, 4],
+      ["starless_core", 1, 1, [{ q: "starless_forge", gte: 20, lt: 100 }, { not: { owns: "starless_core" } }]]],
+    main: [[30, "astral_alloy", 1, 2], [24, "starsteel_bar", 2, 4], [24, "stormray", 4, 6],
+      [16, "uncut_sunstone", 1, 2], [12, "astral_greaves", 1, 1], [10, "astral_cuirass", 1, 1],
+      [6, "astral_helm", 1, 1], [6, "astral_gauntlets", 1, 1]],
+    unique: [["nightfall", 50], ["eventide", 80]] }
+});
+
+Object.assign(Data.recipes, {
+  smelt_astral_alloy: { group: "smelt", skill: "smithing", lvl: 90, xp: 100, at: ["furnace"], tools: [],
+    in: [["starsteel_bar", 2], ["stardust", 3], ["coal", 4]], out: [["astral_alloy", 1]], ticks: 5,
+    if: [{ q: "beyond_crown", eq: 100 }], ifMsg: "Vesna must teach you the astral alloy formula first.",
+    msg: "You bind the stardust into astral alloy." },
+  smith_astral_gauntlets: { group: "smith", skill: "smithing", lvl: 90, xp: 150, at: ["anvil"], tools: ["hammer"],
+    in: [["astral_alloy", 1]], out: [["astral_gauntlets", 1]], ticks: 5, msg: "You forge astral gauntlets." },
+  smith_astral_boots: { group: "smith", skill: "smithing", lvl: 91, xp: 150, at: ["anvil"], tools: ["hammer"],
+    in: [["astral_alloy", 1]], out: [["astral_boots", 1]], ticks: 5, msg: "You forge astral boots." },
+  smith_astral_helm: { group: "smith", skill: "smithing", lvl: 92, xp: 300, at: ["anvil"], tools: ["hammer"],
+    in: [["astral_alloy", 2]], out: [["astral_helm", 1]], ticks: 5, msg: "You forge an astral helm." },
+  smith_nightfall: { group: "smith", skill: "smithing", lvl: 94, xp: 600, at: ["anvil"], tools: ["hammer"],
+    in: [["astral_alloy", 4]], out: [["nightfall", 1]], ticks: 5, msg: "You draw Nightfall from the anvil." },
+  smith_astral_greaves: { group: "smith", skill: "smithing", lvl: 96, xp: 450, at: ["anvil"], tools: ["hammer"],
+    in: [["astral_alloy", 3]], out: [["astral_greaves", 1]], ticks: 5, msg: "You forge astral greaves." },
+  smith_eventide: { group: "smith", skill: "smithing", lvl: 98, xp: 750, at: ["anvil"], tools: ["hammer"],
+    in: [["astral_alloy", 5]], out: [["eventide", 1]], ticks: 5, msg: "You finish the great blade Eventide." },
+  smith_astral_cuirass: { group: "smith", skill: "smithing", lvl: 99, xp: 750, at: ["anvil"], tools: ["hammer"],
+    in: [["astral_alloy", 5]], out: [["astral_cuirass", 1]], ticks: 5, msg: "You forge an astral cuirass." }
+});
+
+Object.assign(Data.dialogues, {
+  starforge_warning: { start: "root", nodes: {
+    root: { branch: [{ if: [{ in: ["starforge", 0, 0, 23, 10] }], go: "leave" }], else: "warn" },
+    warn: { say: "none",
+      text: "Astravor's arena is lethal: no emergency AFK rescue or offline boss farming. Its marked 3x3 blast hits 20-34; equipped Starward halves it. Step outside the mark to dodge.",
+      next: "ask" },
+    ask: { opts: [{ text: "Enter the forge.", go: "enter" }, { text: "Not yet.", go: "back" }] },
+    enter: { say: "none", text: "The astral seal parts.", do: [{ teleport: ["starforge", 12, 10] }], next: null },
+    leave: { say: "none", text: "You retreat beyond the seal.", do: [{ teleport: ["starforge", 12, 12] }], next: null },
+    back: { say: "none", text: "You step away from the seal.", next: null }
+  } }
+});
+
+Object.assign(Data.dialogues.vesna.nodes, {
+  sf_offer: { say: "npc", text: "The Hollow King is silent, but something below his keep still answers the fallen star. Five hollow knights carry the last echoes. Quiet them, and I can open the stair.",
+    next: "sf_ask" },
+  sf_ask: { opts: [{ text: "I'll investigate.", go: "sf_accept" }, { text: "Not now.", go: "sf_bye" }] },
+  sf_accept: { say: "npc", text: "Defeat five hollow knights in Duskhollow. Then bring me three starsteel bars and one cut diamond.",
+    do: [{ stage: ["beyond_crown", 10] }], next: null },
+  sf_knights: { say: "npc", text: "Five hollow knights in Duskhollow. Their echoes keep the stair sealed.", next: null },
+  sf_materials: { say: "npc", text: "Bring three starsteel bars and one cut diamond in your pack. I'll make the Starward and show you how to bind astral alloy.", next: null },
+  sf_ready: { say: "npc", text: "The stair is open at (145,134), in south-east Duskhollow. Take Starward: it halves the guardian's marked blasts only while equipped. You can now smelt astral alloy at Smithing 90.",
+    do: [{ take: ["starsteel_bar", 3] }, { take: ["diamond", 1] }, { complete: "beyond_crown" }], next: null },
+  sf_boss_offer: { say: "npc", text: "Astravor, the Starless guardian, still works the buried forge. Defeat six starbound sentinels below the stair to break its seal, then bring me its core. Go prepared for a harder fight than the King.",
+    next: "sf_boss_ask" },
+  sf_boss_ask: { opts: [{ text: "I'll face Astravor.", go: "sf_boss_accept" },
+    { text: "I need another Starward.", go: "sf_replace", if: [{ not: { owns: "starward" } }] },
+    { text: "Not yet.", go: "sf_bye" }] },
+  sf_boss_accept: { say: "npc", text: "Six sentinels, then Astravor. Keep Starward equipped, dodge the marked ground, and take your best food. The arena offers no AFK rescue.",
+    do: [{ stage: ["starless_forge", 10] }], next: null },
+  sf_sentinels: { say: "npc", text: "Six starbound sentinels in the Starless Forge will break the guardian's seal.",
+    next: "sf_options" },
+  sf_guardian: { say: "npc", text: "The seal is broken. Defeat Astravor in the northern chamber and bring its core. Keep Starward equipped and move out of the marked 3x3 before it detonates.",
+    next: "sf_options" },
+  sf_core: { say: "npc", text: "Bring the Starless core in your pack. If you lost it, Astravor will yield another.",
+    next: "sf_options" },
+  sf_done: { say: "npc", text: "A star's heart, quiet at last. This signet is yours. The forge remains open: its alloy can arm you for whatever comes next.",
+    do: [{ take: ["starless_core", 1] }, { complete: "starless_forge" }], next: null },
+  sf_after: { say: "npc", text: "Astravor will gather itself again. Return whenever you want its alloy, blades, or the little light that follows it.",
+    next: "sf_options" },
+  sf_options: { opts: [{ text: "Replace my lost Starward.", go: "sf_replace", if: [{ not: { owns: "starward" } }] },
+    { text: "I lost my signet.", go: "sf_signet", if: [{ q: "starless_forge", eq: 100 }, { not: { owns: "starbound_signet" } }] },
+    { text: "Goodbye.", go: "sf_bye" }] },
+  sf_signet: { say: "npc", text: "Your work at the forge is not forgotten. Here is another signet.",
+    do: [{ give: ["starbound_signet", 1] }], next: null },
+  sf_replace: { branch: [{ if: [{ has: "starsteel_bar", qty: 3 }, { has: "diamond" },
+    { not: { owns: "starward" } }], go: "sf_replaced" }], else: "sf_replace_need" },
+  sf_replaced: { say: "npc", text: "Three bars and a diamond. Your replacement Starward is ready.",
+    do: [{ take: ["starsteel_bar", 3] }, { take: ["diamond", 1] }, { give: ["starward", 1] }], next: null },
+  sf_replace_need: { say: "npc", text: "I can replace a lost Starward for three starsteel bars and one cut diamond. Bring them in your pack; you cannot already own a Starward.", next: null },
+  sf_bye: { say: "npc", text: "Keep one eye on the ground, and the other on the stars.", next: null }
+});
+Data.dialogues.vesna.nodes.root.branch = [
+  { if: [{ q: "starless_forge", eq: 100 }], go: "sf_after" },
+  { if: [{ q: "starless_forge", eq: 30 }, { has: "starless_core" }], go: "sf_done" },
+  { if: [{ q: "starless_forge", eq: 30 }], go: "sf_core" },
+  { if: [{ q: "starless_forge", eq: 20 }], go: "sf_guardian" },
+  { if: [{ q: "starless_forge", eq: 10 }], go: "sf_sentinels" },
+  { if: [{ q: "beyond_crown", eq: 100 }], go: "sf_boss_offer" },
+  { if: [{ q: "beyond_crown", eq: 20 }, { has: "starsteel_bar", qty: 3 }, { has: "diamond" }], go: "sf_ready" },
+  { if: [{ q: "beyond_crown", eq: 20 }], go: "sf_materials" },
+  { if: [{ q: "beyond_crown", eq: 10 }], go: "sf_knights" },
+  { if: [{ q: "hollow_king", eq: 100 }], go: "sf_offer" }
+].concat(Data.dialogues.vesna.nodes.root.branch);
+
+Object.assign(Data.quests, {
+  beyond_crown: { name: "Beyond the Crown", npc: "vesna", qp: 3,
+    start: "Speak to Astronomer Vesna in Saltmere after completing The Hollow King.",
+    reqs: [{ q: "hollow_king", eq: 100 }], reqText: ["The Hollow King", "Defence 60 to equip the rewarded Starward."],
+    recCmb: 90, stages: [10, 20],
+    journal: { 10: "Defeat 5 hollow knights in Duskhollow ({qc}/5).",
+      20: "Bring Vesna 3 starsteel bars and 1 cut diamond in your pack." },
+    advance: { 10: { kill: "hollow_knight", n: 5, msg: "The echoes fade. Bring Vesna three starsteel bars and one cut diamond." } },
+    hint: { 0: [["npc", "vesna"]], 10: [["npc", "hollow_knight"]], 20: [["npc", "vesna"]] },
+    keep: { 20: [["starsteel_bar", 3], ["diamond", 1]] },
+    rewards: { xp: [["smithing", 15000], ["defence", 10000]], items: [["starward", 1]],
+      lines: ["The Starless stair at (145,134) in Duskhollow opens.", "Astral alloy smelting unlocks at Smithing 90."] } },
+  starless_forge: { name: "The Starless Forge", npc: "vesna", qp: 5,
+    start: "Speak to Astronomer Vesna again after Beyond the Crown.",
+    reqs: [{ q: "beyond_crown", eq: 100 }], reqText: ["Beyond the Crown", "Recommended: combat 100, Starward and high-tier food."],
+    recCmb: 100, stages: [10, 20, 30],
+    journal: { 10: "Defeat 6 starbound sentinels below the Duskhollow stair ({qc}/6).",
+      20: "Pass the northern astral seal, defeat Astravor, and take the Starless core.",
+      30: "Bring the Starless core to Astronomer Vesna in Saltmere." },
+    advance: { 10: { kill: "starbound_sentinel", n: 6, msg: "The astral seal cracks. Astravor waits in the northern chamber." },
+      20: { have: ["starless_core", 1], msg: "The core is quiet. Take it back to Vesna." } },
+    hint: { 0: [["npc", "vesna"]],
+      10: [["obj", "starforge_entrance", [{ not: { in: ["starforge", 0, 0, 23, 27] } }]], ["npc", "starbound_sentinel"]],
+      20: [["obj", "starforge_entrance", [{ not: { in: ["starforge", 0, 0, 23, 27] } }]], ["obj", "starforge_seal"], ["npc", "astravor"]],
+      30: [["obj", "ladder_up", [{ in: ["starforge", 0, 0, 23, 27] }]], ["npc", "vesna"]] },
+    keep: { 30: [["starless_core", 1]] },
+    rewards: { xp: [["attack", 30000], ["strength", 30000], ["defence", 30000], ["hitpoints", 30000]],
+      items: [["coins", 20000], ["starbound_signet", 1]],
+      lines: ["Astravor remains available for repeat kills, astral equipment, and the Star mote pet."] } }
+});
+
+Data.regions.push(
+  { id: "starforge_heart", name: "Heart of the Starless Forge", map: "starforge", rect: [1, 1, 22, 10],
+    danger: true, freeze: true, graveAt: ["starforge", 12, 24] },
+  { id: "starforge", name: "The Starless Forge", map: "starforge", rect: [0, 0, 23, 27], danger: true }
+);
+Data.maps.overworld.place.push({ o: "starforge_entrance", x: 145, y: 134, to: ["starforge", 12, 25] });
+Data.maps.starforge = {
+  name: "The Starless Forge", dark: true,
+  rows: [
+    "^^^^^^^^^^^^^^^^^^^^^^^^",
+    "^**********************^",
+    "^***j**************j***^",
+    "^**********************^",
+    "^**********************^",
+    "^**********************^",
+    "^**********************^",
+    "^**********************^",
+    "^***j**************j***^",
+    "^**********************^",
+    "^**********************^",
+    "^^^^^^^^^^^^*^^^^^^^^^^^",
+    "^**********************^",
+    "^**********************^",
+    "^**********************^",
+    "^**********************^",
+    "^**********************^",
+    "^**********************^",
+    "^**********************^",
+    "^^^^^^^^^^^^*^^^^^^^^^^^",
+    "^^^^^^^^^^^^*^^^^^^^^^^^",
+    "^^^^^^^^^^^^*^^^^^^^^^^^",
+    "^**********************^",
+    "^**********************^",
+    "^**********************^",
+    "^**********************^",
+    "^**********************^",
+    "^^^^^^^^^^^^^^^^^^^^^^^^"
+  ],
+  place: [
+    { o: "ladder_up", x: 12, y: 26, to: ["overworld", 145, 135] },
+    { o: "starforge_seal", x: 12, y: 11 },
+    { o: "torch", x: 9, y: 24 }, { o: "torch", x: 15, y: 24 }
+  ],
+  spawns: [
+    { n: "starbound_sentinel", x: 4, y: 14, r: 0 }, { n: "starbound_sentinel", x: 8, y: 16, r: 0 },
+    { n: "starbound_sentinel", x: 18, y: 14, r: 0 }, { n: "starbound_sentinel", x: 20, y: 17, r: 0 },
+    { n: "astravor", x: 12, y: 5, r: 0, if: [{ q: "starless_forge", gte: 20 }] }
+  ],
+  fish: []
+};
 // ==== src/engine/data/start.js ====
 // ----------------------------------------------------------------
 // ------------------ Data: start kit and renames -----------------
