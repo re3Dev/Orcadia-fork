@@ -4874,6 +4874,19 @@ const Player = (function () {
     else p.bank.push({ id: id, qty: qty });
   }
 
+  function bankCount(p, id) {
+    var i = bankAt(p, id);
+    return i >= 0 ? p.bank[i].qty : 0;
+  }
+
+  function bankRemove(p, id, qty) {
+    var i = bankAt(p, id);
+    if (i < 0 || p.bank[i].qty < qty) return false;
+    p.bank[i].qty -= qty;
+    if (p.bank[i].qty === 0) p.bank.splice(i, 1);
+    return true;
+  }
+
   // n of the clicked item's id: that slot first, then the lowest other slots (a noted slot: only itself).
   // Notes bank as the plain item.
   function deposit(state, slot, n) {
@@ -5032,6 +5045,7 @@ const Player = (function () {
     removeAt: removeAt, move: move, toGround: toGround, give: give, drop: drop, foods: foods, eat: eat,
     heldTools: heldTools, bestTool: bestTool, hasTools: hasTools, equip: equip, unequip: unequip, bonuses: bonuses,
     twoHanded: twoHanded,
+    bankCount: bankCount, bankRemove: bankRemove, bankPut: bankPut,
     deposit: deposit, depositAll: depositAll, depositWorn: depositWorn, withdraw: withdraw, deathSplit: deathSplit, teleport: teleport,
     healOf: healOf, perkList: perkList, perkDef: perkDef, perkRank: perkRank, perkPoints: perkPoints, perkSpent: perkSpent,
     perkFree: perkFree, perkVal: perkVal, perkRanks: perkRanks, perkRoll: perkRoll, perkMsg: perkMsg, perkUp: perkUp,
@@ -5078,8 +5092,8 @@ const Script = (function () {
     Util.emit(state, { type: "iface" });
   }
 
-  // Section 10.4 Open: recipes made at `station` that the player holds any input of (coins, a fee,
-  // don't count), or with `id` among the inputs when an item is used on the station. Prints the
+  // Recipes at this station with an input in the pack or bank (coins, a fee, don't count),
+  // or with `id` among the inputs when an item is used on the station. Prints the
   // station's `empty` message when nothing qualifies (not for a use: the caller says "nothing").
   function openMake(state, station, at, id) {
     var p = state.player;
@@ -5089,7 +5103,8 @@ const Script = (function () {
       var ins = Array.isArray(r.in) ? r.in : [];
       if (!Array.isArray(r.at) || r.at.indexOf(station) < 0) return false;
       return ins.some(function (e) {
-        return Array.isArray(e) && (id ? e[0] === id : e[0] !== "coins" && Player.count(p, e[0]) >= 1);
+        return Array.isArray(e) && (id ? e[0] === id : e[0] !== "coins" &&
+          (Player.count(p, e[0]) >= 1 || (Sim.bankMakeAllowed(r) && Player.bankCount(p, e[0]) >= 1)));
       });
     });
     if (!rids.length) {
@@ -7883,9 +7898,39 @@ const Sim = (function () {
     return null;
   }
 
-  // Section 10.4 Each product: { msg, why, mat? } for the first failed check, else null.
+  function bankMakeAllowed(r) {
+    return !r.place && !r.refuel && Array.isArray(r.out) && r.out.length > 0;
+  }
+
+  function makeCount(p, id, bankFeed) {
+    return bankFeed ? Player.bankCount(p, id) : Player.count(p, id);
+  }
+
+  // Reserve space for either outcome, including every possible perk bonus, before consuming inputs.
+  function bankMakeRoom(p, r) {
+    var base = Object.create(null);
+    p.bank.forEach(function (e) { base[e.id] = e.qty; });
+    (r.in || []).forEach(function (e) { base[e[0]] -= e[1]; });
+    function fits(outs, success) {
+      var qty = Object.assign(Object.create(null), base);
+      var twice = success && Player.perkVal(p, r.skill, "twice", r.group) > 0;
+      outs.forEach(function (e) { qty[e[0]] = (qty[e[0]] || 0) + e[1] * (twice ? 2 : 1); });
+      if (success && r.in && r.in.length && Player.perkVal(p, r.skill, "save", r.group) > 0) {
+        var id = r.in[0][0];
+        qty[id] = (qty[id] || 0) + 1;
+      }
+      var ids = Object.keys(qty).filter(function (id) { return qty[id] > 0; });
+      return ids.length <= Rules.BANK_MAX && ids.every(function (id) { return qty[id] <= QTY_MAX; });
+    }
+    return fits(r.out || [], true) && fits(r.fail || [], false);
+  }
+
+  // Each product: { msg, why, mat? } for the first failed check, else null.
   function makeCheck(state, a, r) {
     var p = state.player;
+    if (a.bankFeed && !bankMakeAllowed(r)) {
+      return { msg: "Bank-fed production is not available for this recipe.", why: "unsupported bank recipe" };
+    }
     if (a.at && !stationAt(state, a.at, r)) return { msg: null, why: "the fire went out" };
     if (Player.level(p, r.skill) < r.lvl) {
       return { msg: "You need " + Player.skillName(r.skill) + " level " + Util.fmtInt(r.lvl) + " for this.", why: "level too low" };
@@ -7897,8 +7942,12 @@ const Sim = (function () {
     }
     var ins = Array.isArray(r.in) ? r.in : [];
     for (var k = 0; k < ins.length; k++) {
-      if (Player.count(p, ins[k][0]) < ins[k][1]) return { msg: "You've run out of materials.", why: "out of materials", mat: true };
+      if (makeCount(p, ins[k][0], a.bankFeed) < ins[k][1]) {
+        return { msg: a.bankFeed ? "You've run out of materials in the bank." : "You've run out of materials.",
+          why: "out of materials", mat: true };
+      }
     }
+    if (a.bankFeed && !bankMakeRoom(p, r)) return { msg: "Your bank has no room for the products or possible perk bonuses.", why: "bank full" };
     var nope = r.place ? placeWhy(state) : null;
     if (nope) return { msg: nope, why: null };
     return null;
@@ -7913,7 +7962,7 @@ const Sim = (function () {
     var r = Data.recipes[rid];
     var t = typeof f.at === "string" ? Util.parseRef(f.at) : null;
     var a = { k: "make", rid: rid, left: n, next: state.tick + Util.int(r.ticks, 0, 100000, 0), at: t ? f.at : null,
-      ax: t ? t.x : p.x, ay: t ? t.y : p.y };
+      ax: t ? t.x : p.x, ay: t ? t.y : p.y, bankFeed: f.bankFeed === true };
     var why = makeCheck(state, a, r);
     if (why && why.why === "the fire went out") {
       setIface(state, null);
@@ -7957,28 +8006,33 @@ const Sim = (function () {
   }
 
   // Thrifty and Kindling give one unit of the first input back; Double batch and Quick stitch make the
-  // products again. Both go through give, so in a full pack the extra waits at the player's feet.
-  function extras(state, r, outs) {
+  // products again. Inventory jobs drop overflow at the player's feet; bank jobs reserve space first.
+  function makeGive(state, id, qty, bankFeed) {
+    if (bankFeed) Player.bankPut(state.player, id, qty);
+    else Player.give(state, id, qty);
+  }
+
+  function extras(state, r, outs, bankFeed) {
     var ins = Array.isArray(r.in) ? r.in : [];
     if (ins.length && Player.perkRoll(state, r.skill, "save", r.group)) {
       Player.perkMsg(state, r.skill, "save", r.group);
-      Player.give(state, ins[0][0], 1);
+      makeGive(state, ins[0][0], 1, bankFeed);
     }
     if (outs.length && Player.perkRoll(state, r.skill, "twice", r.group)) {
       Player.perkMsg(state, r.skill, "twice", r.group, "loot");
-      outs.forEach(function (e) { Player.give(state, e[0], e[1]); });
+      outs.forEach(function (e) { makeGive(state, e[0], e[1], bankFeed); });
     }
   }
 
-  function made(state, r, st) {
+  function made(state, r, st, bankFeed) {
     var p = state.player;
     var outs = Array.isArray(r.out) ? r.out : [];
     if (r.place) place(state, r.place, r.skill);
-    outs.forEach(function (e) { Player.give(state, e[0], e[1]); });
+    outs.forEach(function (e) { makeGive(state, e[0], e[1], bankFeed); });
     makeXp(state, r, r.skill, r.xp, true);
     if (Array.isArray(r.xp2)) makeXp(state, r, r.xp2[0], r.xp2[1], false);
     if (typeof r.msg === "string") Util.msg(state, r.msg, "game");
-    extras(state, r, outs);
+    extras(state, r, outs, bankFeed);
     if (r.refuel > 0 && st && typeof st.o.until === "number") {
       setObj(state, p.map, st.x, st.y, st.o.id, Math.max(st.o.until, state.tick + fireTicks(state, r.skill, r.refuel)));
     }
@@ -7999,7 +8053,7 @@ const Sim = (function () {
     var p = state.player;
     var why = makeCheck(state, a, r);
     if (why) {
-      if (why.mat && a.left === -1) setAct(state, null);   // Make-All used everything up
+      if (why.mat && a.left === -1 && !a.bankFeed) setAct(state, null);   // Make-All used everything up
       else {
         if (why.msg) Util.msg(state, why.msg, "warn");
         if (why.why) stop(state, why.why);
@@ -8007,12 +8061,15 @@ const Sim = (function () {
       }
       return false;
     }
-    (r.in || []).forEach(function (e) { Player.remove(p, e[0], e[1]); });
+    (r.in || []).forEach(function (e) {
+      if (a.bankFeed) Player.bankRemove(p, e[0], e[1]);
+      else Player.remove(p, e[0], e[1]);
+    });
     var st = a.at ? stationAt(state, a.at, r) : null;
     var chance = makeOdds(state, r, st);
-    if (chance >= 1 || Util.rand(state) < chance) made(state, r, st);
+    if (chance >= 1 || Util.rand(state) < chance) made(state, r, st, a.bankFeed);
     else {
-      (r.fail || []).forEach(function (e) { Player.give(state, e[0], e[1]); });
+      (r.fail || []).forEach(function (e) { makeGive(state, e[0], e[1], a.bankFeed); });
       if (typeof r.failMsg === "string") Util.msg(state, r.failMsg, "game");
     }
     if (a.left > 0 && --a.left === 0) {
@@ -8219,7 +8276,7 @@ const Sim = (function () {
     var name = r ? (made ? "Making " : "") + recipeName(r) : "Making";
     var left = a.left > 0 ? a.left : null;
     // The count only helps for several products: a single fire reads "Light logs", not "(1 left)".
-    return { text: name + (left > 1 ? " (" + Util.fmtInt(left) + " left)" : ""), dot: "work",
+    return { text: name + (a.bankFeed ? " [bank-fed]" : "") + (left > 1 ? " (" + Util.fmtInt(left) + " left)" : ""), dot: "work",
       skill: r ? r.skill : null, left: left };
   }
 
@@ -8374,7 +8431,8 @@ const Sim = (function () {
     catchUp: catchUp, objOps: objOps, alive: alive, resolve: resolve, findOp: findOp, examineText: examineText,
     setIface: setIface, setAct: setAct, beginWorld: beginWorld, walkTo: walkTo, worldOp: worldOp, recall: recall,
     doing: doing, recipeName: recipeName, afkDefaults: afkDefaults, respawnPos: respawnPos, inFreeze: inFreeze,
-    canUseOn: canUseOn, stop: stop, courier: courier, startMake: startMake, season: season, seasonMod: seasonMod
+    canUseOn: canUseOn, stop: stop, courier: courier, startMake: startMake, season: season, seasonMod: seasonMod,
+    makeCheck: makeCheck, makeCount: makeCount, bankMakeAllowed: bankMakeAllowed
   };
 })();
 // ==== src/engine/save.js ====
@@ -8492,6 +8550,7 @@ const Save = (function () {
     } else if (a.k === "fight") {
       arr = ["fight", a.npc, a.ax, a.ay];
     } else if (a.k === "make") {
+      if (a.bankFeed) return null;   // Bank-fed jobs run only in the open game, never after closing.
       var at = a.at ? Util.parseRef(a.at) : null;
       arr = ["make", a.rid, a.left, at ? at.x : -1, at ? at.y : -1];
     }
@@ -9638,6 +9697,12 @@ const Engine = (function () {
     return finish(state, Sim.startMake(state, rid, count));
   }
 
+  function setMakeBankFeed(state, on) {
+    if (!isState(state) || typeof on !== "boolean" || !ifaceIs(state, "make")) return false;
+    state.player.iface.bankFeed = on;
+    return true;
+  }
+
   function dialogueContinue(state) {
     if (!isState(state)) return false;
     return finish(state, Script.next(state));
@@ -9997,19 +10062,9 @@ const Engine = (function () {
 
   // Why a recipe can't be made right now, or null.
   function makeWhy(s, r) {
-    var p = s.player;
-    if (Player.level(p, r.skill) < r.lvl) return "You need " + skillName(r.skill) + " level " + r.lvl + " for this.";
-    if (r.if && !Script.test(s, r.if)) return typeof r.ifMsg === "string" ? r.ifMsg : NOTHING;
-    var tools = r.tools || [];
-    for (var i = 0; i < tools.length; i++) {
-      if (!Player.hasTools(p, [tools[i]])) {
-        var t = Data.vocab && Data.vocab.tools && Util.has(Data.vocab.tools, tools[i]) ? Data.vocab.tools[tools[i]] : tools[i];
-        return "You need " + t + " for this.";
-      }
-    }
-    var ins = r.in || [];
-    for (var k = 0; k < ins.length; k++) if (Player.count(p, ins[k][0]) < ins[k][1]) return "You've run out of materials.";
-    return null;
+    var f = s.player.iface;
+    var why = Sim.makeCheck(s, { at: f.at, bankFeed: f.bankFeed === true }, r);
+    return why ? why.msg || why.why : null;
   }
 
   function viewMake(s) {
@@ -10024,9 +10079,10 @@ const Engine = (function () {
       if (!title) title = skillName(r.skill);
       return { rid: rid, out: src.length ? src[0][0] : null, name: Sim.recipeName(r), skill: r.skill, lvl: r.lvl,
         ok: why === null, why: why,
-        inputs: (r.in || []).map(function (e) { return [e[0], e[1], Player.count(p, e[0])]; }) };
+        inputs: (r.in || []).map(function (e) { return [e[0], e[1], Sim.makeCount(p, e[0], f.bankFeed)]; }) };
     });
-    return { title: title, rows: rows };
+    return { title: title, rows: rows, bankFeed: f.bankFeed === true,
+      bankAvailable: (f.rids || []).some(function (rid) { return Util.has(Data.recipes, rid) && Sim.bankMakeAllowed(Data.recipes[rid]); }) };
   }
 
   function viewBank(s) {
@@ -10184,7 +10240,7 @@ const Engine = (function () {
     createState: Sim.createState, tick: Sim.tick, catchUp: Sim.catchUp, drainEvents: drainEvents,
     serialize: Save.serialize, deserialize: Save.deserialize, check: Save.check, objectAt: Sim.objectAt,
     menuAt: menuAt, options: options, canUse: canUse, act: act, walkTo: walkTo, useItemOn: useItemOn,
-    moveItem: moveItem, make: make, dialogueContinue: dialogueContinue, dialogueChoose: dialogueChoose,
+    moveItem: moveItem, make: make, setMakeBankFeed: setMakeBankFeed, dialogueContinue: dialogueContinue, dialogueChoose: dialogueChoose,
     closeInterface: closeInterface, depositAll: depositAll, depositWorn: depositWorn, setStyle: setStyle, setLook: setLook,
     setRun: setRun, setBankNote: setBankNote, setAfk: setAfk, recall: recall, perkUp: perkUp, perkReset: perkReset, setPet: setPet, rest: rest, nearest: nearest, status: status,
     view: view
@@ -15932,7 +15988,12 @@ const UI = (function () {
     }).join("");
     var cols = Math.max(1, Math.min(v.rows.length, Math.floor((sz.view.w - 16) / 60)));
     sh.innerHTML = '<div class="mkt">What will you make?</div><div class="mkg" style="--mc:' + cols + '">' + cells + '</div><div class="row">' +
-      qtyButtons("makeqty", prefs.makeQty, [1, 5, 10, -1], "makex") + "</div>";
+      qtyButtons("makeqty", prefs.makeQty, [1, 5, 10, -1], "makex") + "</div>" +
+      (v.bankAvailable ? '<div class="row"><button class="gb' + (v.bankFeed ? " on" : "") +
+        '" data-act="makebank" aria-pressed="' + v.bankFeed + '">Bank-fed: ' + (v.bankFeed ? "On" : "Off") +
+        '</button></div><div class="mkt">' + (v.bankFeed ?
+          "Uses bank materials; products go to bank. Keep tools in your pack. Stops on closing the game." :
+          "Uses materials in your pack. Enable bank-fed mode for automatic storage.") + "</div>" : "");
   }
 
   function buildAmount() {
@@ -16227,6 +16288,10 @@ const UI = (function () {
     shopqty: function (v) { prefs.shopQty = +v; },
     make: function (v) { makeNow(v); },
     makeqty: function (v) { prefs.makeQty = +v; },
+    makebank: function () {
+      act(function (s) { return Engine.setMakeBankFeed(s, !s.player.iface.bankFeed); });
+      sigs.sheet = null;
+    },
     makex: function () { askAmount(function (n) { prefs.makeQty = n; }); },
     dlgnext: function () { act(function (s) { return Engine.dialogueContinue(s); }); },
     dlgopt: function (v) { act(function (s) { return Engine.dialogueChoose(s, +v); }); },
