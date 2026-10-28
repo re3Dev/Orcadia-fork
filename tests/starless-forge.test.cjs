@@ -396,7 +396,7 @@ test("astral smelting needs its quest and level; new equipment enforces level 70
   f.Script.openMake(f.state, "furnace", f.Util.refObj(45, 45));
   assert.equal(f.Engine.make(f.state, "smelt_astral_alloy", 1), false);
   f.p.quests.beyond_crown = 100;
-  f.p.xp10.smithing = f.Rules.xpForLevel(89) * 10;
+  f.p.xp10.smithing = f.Rules.xpForLevel(79) * 10;
   assert.equal(f.Engine.make(f.state, "smelt_astral_alloy", 1), false);
   f.p.inv.fill(null);
   f.Player.add(f.p, "nightfall", 1);

@@ -44,6 +44,35 @@ Old characters receive bonuses from their existing levels automatically. The
 save version and XP thresholds are unchanged; no reset or migration is needed.
 Existing action restoration behavior remains unchanged on reload.
 
+## Smithing unlocks
+
+Pre-astral metal tiers now have a shorter unlock spread, so equipment becomes
+craftable while it is still useful rather than waiting until near mastery.
+
+| Metal | Smelting / first item | Full tier (including breastplate) |
+|---|---:|---:|
+| Bronze | 1 | 11 |
+| Iron | 10 | 20 |
+| Steel | 20 | 30 |
+| Cobalt | 30 | 40 |
+| Verdite | 40 | 50 |
+| Emberite | 55 | 65 |
+| Starsteel | 70 | 80 |
+
+Within each tier, the axe unlocks at the base level, followed by dagger (+1),
+sword (+2), pickaxe (+3), helm (+4), mace (+5), shield (+6), greatsword (+7),
+greaves (+8), and breastplate (+10). At Smithing 80, **every starsteel recipe
+is available**: helm 74, shield 76, greaves 78, and breastplate 80.
+
+Fallen Star now requires **Smithing 70**; its **Mining 80** and quest
+prerequisites remain unchanged. Gold smelting (40), Emberward (Smithing 35,
+Crafting 20 and Ilvara's design) are unchanged. Astral recipes now unlock
+at 80-85, with alloy smelting still requiring Beyond the Crown.
+Material costs, XP awards, iron-smelting success rules, work-rate bonuses,
+equipment stats and gathering/equipment requirements are unchanged.
+Guides, production menus and level-up unlocks use the new recipe levels.
+Existing saves keep their XP and gain these unlocks without a reset.
+
 ## The Starless Forge: post-Hollow King expansion
 
 Start with **Astronomer Vesna in Saltmere (126,48)** after completing
@@ -80,16 +109,16 @@ require **Defence 70**.
 
 | Item | Attack / strength / defence | Smithing level | Astral alloy cost |
 |---|---:|---:|---:|
-| Astral gauntlets | 6 / 6 / 14 | 90 | 1 |
-| Astral boots | 0 / 0 / 20 | 91 | 1 |
-| Astral helm | 0 / 0 / 46 | 92 | 2 |
-| Nightfall, one-handed, speed 4 | 70 / 74 / 0 | 94 | 4 |
-| Astral greaves | 0 / 0 / 90 | 96 | 3 |
-| Eventide, two-handed, speed 7 | 76 / 250 / 0 | 98 | 5 |
-| Astral cuirass | 0 / 0 / 140 | 99 | 5 |
+| Astral gauntlets | 6 / 6 / 14 | 80 | 1 |
+| Astral boots | 0 / 0 / 20 | 81 | 1 |
+| Astral helm | 0 / 0 / 46 | 82 | 2 |
+| Nightfall, one-handed, speed 4 | 70 / 74 / 0 | 83 | 4 |
+| Astral greaves | 0 / 0 / 90 | 83 | 3 |
+| Eventide, two-handed, speed 7 | 76 / 250 / 0 | 84 | 5 |
+| Astral cuirass | 0 / 0 / 140 | 85 | 5 |
 | Starbound signet, quest reward | 8 / 8 / 12 | - | - |
 
-At **Smithing 90**, smelt one astral alloy from **two starsteel bars,
+At **Smithing 80**, smelt one astral alloy from **two starsteel bars,
 three stardust and four coal** at a furnace, after Beyond the Crown.
 Forge equipment at an anvil with a carried hammer. All eight production
 recipes support bank-fed crafting and skill work-rate bonuses.
